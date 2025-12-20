@@ -4,11 +4,17 @@
 import streamlit as st
 import sys
 import os
+import tempfile
 
+# -------------------------------
 # Add 1_backend folder to Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../1_backend")))
+# -------------------------------
+BACKEND_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../1_backend")
+)
+sys.path.insert(0, BACKEND_PATH)
 
-from app import load_pdf, answer_question  # Import backend functions
+from app import load_pdf, answer_question  # backend functions
 
 # ===============================
 # Streamlit Page Config
@@ -22,7 +28,10 @@ st.set_page_config(
 # ===============================
 # UI Header
 # ===============================
-st.markdown("<h1 style='text-align:center;color:#4B0082;'>📄 PDF QA System</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<h1 style='text-align:center;color:#4B0082;'>📄 PDF QA System</h1>",
+    unsafe_allow_html=True
+)
 st.markdown("<hr>", unsafe_allow_html=True)
 
 # ===============================
@@ -30,51 +39,70 @@ st.markdown("<hr>", unsafe_allow_html=True)
 # ===============================
 with st.sidebar:
     st.header("ℹ️ Instructions")
-    st.write("""
-    1. Upload a PDF document.  
-    2. Type your question in the input box.  
-    3. The app will return a generative answer.  
-    4. Source page is approximate.  
-    """)
+    st.write(
+        """
+        1. Upload a PDF document  
+        2. Ask a question from the PDF  
+        3. The system retrieves relevant context  
+        4. Answer is generated using RAG  
+        """
+    )
+
+# ===============================
+# Session State
+# ===============================
+if "pdf_loaded" not in st.session_state:
+    st.session_state.pdf_loaded = False
 
 # ===============================
 # PDF Upload
 # ===============================
-uploaded_file = st.file_uploader("Upload PDF", type="pdf")
+uploaded_file = st.file_uploader("📤 Upload PDF", type="pdf")
 
-if uploaded_file:
+if uploaded_file and not st.session_state.pdf_loaded:
     with st.spinner("Processing PDF..."):
-        # Save uploaded PDF temporarily
-        with open("temp.pdf", "wb") as f:
-            f.write(uploaded_file.read())
-        # Load PDF using backend function
-        num_chunks = load_pdf("temp.pdf")
-        st.success(f"✅ PDF processed with {num_chunks} chunks.")
+        # Save PDF safely (Streamlit Cloud compatible)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(uploaded_file.read())
+            temp_pdf_path = tmp.name
+
+        num_chunks = load_pdf(temp_pdf_path)
+        st.session_state.pdf_loaded = True
+
+        st.success(f"✅ PDF processed successfully ({num_chunks} chunks)")
 
 st.markdown("---")
-question = st.text_input("💬 Ask a question:")
+
+# ===============================
+# Question Input
+# ===============================
+question = st.text_input("💬 Ask a question from the PDF:")
 
 # ===============================
 # Display Answer
 # ===============================
-if uploaded_file and question:
+if st.session_state.pdf_loaded and question:
     with st.spinner("Generating answer..."):
         answer, page = answer_question(question, top_k=5)
 
     col1, col2 = st.columns([3, 1])
 
-    # Transparent box for answer
     col1.markdown(
-        f"<div style='padding:10px; border:1px solid #4B0082; border-radius:5px;'>"
-        f"<b>Answer:</b> {answer}</div>",
+        f"""
+        <div style='padding:12px;border:1px solid #4B0082;border-radius:6px;'>
+        <b>Answer:</b><br>{answer}
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
-    # Transparent box for source page
-    if page:
+    if page is not None:
         col2.markdown(
-            f"<div style='padding:10px; border:1px solid #4B0082; border-radius:5px;'>"
-            f"<b>Approx. Source Page:</b> {page}</div>",
+            f"""
+            <div style='padding:12px;border:1px solid #4B0082;border-radius:6px;'>
+            <b>Approx. Source Page:</b><br>{page}
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
